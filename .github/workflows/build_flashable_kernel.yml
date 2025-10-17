@@ -42,7 +42,6 @@ jobs:
     - name: Apply KernelSU-Next & SuSFS Patches
       run: |
         cd kernel_src
-        # Automatically apply KernelSU-Next & SuSFS patches
         bash kernel_su_next/apply.sh || echo "KernelSU-Next applied"
         bash susfs/apply.sh || echo "SuSFS applied"
 
@@ -62,15 +61,15 @@ jobs:
 
     - name: Create NiKernel3 Flashable ZIP
       run: |
-        mkdir -p flashable_zip
+        mkdir -p flashable_zip/META-INF/com/google/android
         cp kernel_src/out/arch/arm64/boot/Image.gz-dtb flashable_zip/
-        # Optional: include default ramdisk and updater-script for NiKernel3
-        echo -e "ui_print(\"NiKernel3: Nothing 3A Pro\");" > flashable_zip/META-INF/com/google/android/updater-script
+        # Minimal updater-script
+        echo -e "ui_print(\"NiKernel3: Nothing 3A Pro\");\npackage_extract_file(\"Image.gz-dtb\", \"/boot/Image.gz-dtb\");" > flashable_zip/META-INF/com/google/android/updater-script
         cd flashable_zip
         zip -r NiKernel3-${{ github.run_id }}.zip *
 
     - name: Upload Flashable ZIP
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: NiKernel3-ZIP
         path: flashable_zip/NiKernel3-*.zip
