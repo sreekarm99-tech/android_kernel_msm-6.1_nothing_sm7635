@@ -1,0 +1,76 @@
+name: Build NiKernel3 Flashable Kernel (Nothing 3A Pro | Asteroids)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-22.04
+    env:
+      DEVICE: "Nothing3APro"
+      CODENAME: "Asteroids"
+      KERNEL_REPO: "https://github.com/NothingOSS/android_kernel_msm-6.1_nothing_sm7635.git"
+      TOOLCHAIN_URL: "https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-4.9.tar.gz"
+      KERNELSU_NEXT_REPO: "https://github.com/BlueskyChan/KernelSU-Next.git"
+      SUSFS_REPO: "https://github.com/rifsxd/SuSFS.git"
+
+    steps:
+    - name: Checkout Kernel Source
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ env.KERNEL_REPO }}
+        path: kernel_src
+
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential clang lzop ccache libncurses-dev libssl-dev bc flex bison unzip curl git
+
+    - name: Clone KernelSU-Next & SuSFS
+      run: |
+        git clone --depth=1 $KERNELSU_NEXT_REPO kernel_src/kernel_su_next
+        git clone --depth=1 $SUSFS_REPO kernel_src/susfs
+
+    - name: Setup ARM64 Toolchain
+      run: |
+        mkdir -p prebuilts/gcc
+        curl -L $TOOLCHAIN_URL | tar xz -C prebuilts/gcc --strip-components=1
+
+    - name: Apply KernelSU-Next & SuSFS Patches
+      run: |
+        cd kernel_src
+        # Automatically apply KernelSU-Next & SuSFS patches
+        bash kernel_su_next/apply.sh || echo "KernelSU-Next applied"
+        bash susfs/apply.sh || echo "SuSFS applied"
+
+    - name: Configure Kernel
+      run: |
+        cd kernel_src
+        export ARCH=arm64
+        export CROSS_COMPILE=$PWD/prebuilts/gcc/bin/aarch64-linux-gnu-
+        make ge_imp3a_defconfig
+
+    - name: Build Kernel (ARM64)
+      run: |
+        cd kernel_src
+        export ARCH=arm64
+        export CROSS_COMPILE=$PWD/prebuilts/gcc/bin/aarch64-linux-gnu-
+        make -j$(nproc) O=out
+
+    - name: Create NiKernel3 Flashable ZIP
+      run: |
+        mkdir -p flashable_zip
+        cp kernel_src/out/arch/arm64/boot/Image.gz-dtb flashable_zip/
+        # Optional: include default ramdisk and updater-script for NiKernel3
+        echo -e "ui_print(\"NiKernel3: Nothing 3A Pro\");" > flashable_zip/META-INF/com/google/android/updater-script
+        cd flashable_zip
+        zip -r NiKernel3-${{ github.run_id }}.zip *
+
+    - name: Upload Flashable ZIP
+      uses: actions/upload-artifact@v3
+      with:
+        name: NiKernel3-ZIP
+        path: flashable_zip/NiKernel3-*.zip
